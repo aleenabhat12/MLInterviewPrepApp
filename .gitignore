@@ -1,6 +1,9 @@
 # Environment variables
 .env
 
+# Quiz history
+quiz_history.json
+
 # Python cache
 __pycache__/
 *.py[cod]
