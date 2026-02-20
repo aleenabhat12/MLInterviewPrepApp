@@ -1,31 +1,103 @@
-"""Question generator using Azure OpenAI."""
+"""Question generator — supports Azure OpenAI, OpenAI, and Ollama providers."""
 
 import json
 import random
 from typing import List, Dict, Optional
 import httpx
 
-from config import (
-    ML_TOPICS, QUESTIONS_PER_QUIZ,
-    AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT, AZURE_OPENAI_API_VERSION
-)
+import config
+from config import ML_TOPICS, QUESTIONS_PER_QUIZ
 from scenario_questions import SCENARIO_FEW_SHOT_EXAMPLES
 
 
-def _build_api_url() -> str:
-    """Build the Azure OpenAI chat completions URL from the configured endpoint.
+# ---------------------------------------------------------------------------
+# Provider helpers
+# ---------------------------------------------------------------------------
 
-    Supports two endpoint styles:
-    - OpenAI-compatible (/openai/v1): append /chat/completions directly.
-    - Standard Azure OpenAI base URL: build the deployment-specific path.
-    """
-    base_url = AZURE_OPENAI_ENDPOINT.rstrip('/')
-    if base_url.endswith('/v1'):
-        return f"{base_url}/chat/completions"
+def _validate_credentials() -> None:
+    """Raise ValueError if the active provider's credentials are missing."""
+    p = config.AI_PROVIDER
+    if p == "openai":
+        if not config.OPENAI_API_KEY:
+            raise ValueError("OpenAI API key not configured. Set OPENAI_API_KEY in settings.")
+        if not config.OPENAI_MODEL:
+            raise ValueError("OpenAI model not configured. Set OPENAI_MODEL in settings.")
+    elif p == "ollama":
+        if not config.OLLAMA_BASE_URL:
+            raise ValueError("Ollama base URL not configured. Set OLLAMA_BASE_URL in settings.")
+        if not config.OLLAMA_MODEL:
+            raise ValueError("Ollama model not configured. Set OLLAMA_MODEL in settings.")
+    else:  # azure
+        if not config.AZURE_OPENAI_ENDPOINT or not config.AZURE_OPENAI_API_KEY:
+            raise ValueError(
+                "Azure OpenAI credentials not configured. "
+                "Please set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY in .env or settings."
+            )
+        if not config.AZURE_OPENAI_DEPLOYMENT:
+            raise ValueError(
+                "Azure OpenAI deployment name not configured. "
+                "Please set AZURE_OPENAI_DEPLOYMENT in .env or settings."
+            )
+
+
+def _build_api_url() -> str:
+    """Build the chat completions URL for the active provider."""
+    p = config.AI_PROVIDER
+    if p == "openai":
+        return "https://api.openai.com/v1/chat/completions"
+    if p == "ollama":
+        return f"{config.OLLAMA_BASE_URL.rstrip('/')}/v1/chat/completions"
+    # azure
+    base = config.AZURE_OPENAI_ENDPOINT.rstrip("/")
+    if base.endswith("/v1"):
+        return f"{base}/chat/completions"
     return (
-        f"{base_url}/openai/deployments/{AZURE_OPENAI_DEPLOYMENT}"
-        f"/chat/completions?api-version={AZURE_OPENAI_API_VERSION}"
+        f"{base}/openai/deployments/{config.AZURE_OPENAI_DEPLOYMENT}"
+        f"/chat/completions?api-version={config.AZURE_OPENAI_API_VERSION}"
     )
+
+
+def _build_headers() -> dict:
+    """Build the HTTP headers for the active provider."""
+    p = config.AI_PROVIDER
+    headers = {"Content-Type": "application/json"}
+    if p == "openai":
+        headers["Authorization"] = f"Bearer {config.OPENAI_API_KEY}"
+    elif p == "ollama":
+        pass  # Ollama needs no auth header
+    else:  # azure
+        base = config.AZURE_OPENAI_ENDPOINT.rstrip("/")
+        if base.endswith("/v1"):
+            headers["Authorization"] = f"Bearer {config.AZURE_OPENAI_API_KEY}"
+        else:
+            headers["api-key"] = config.AZURE_OPENAI_API_KEY
+    return headers
+
+
+def _get_model() -> str:
+    """Return the model/deployment name for the active provider."""
+    p = config.AI_PROVIDER
+    if p == "openai":
+        return config.OPENAI_MODEL
+    if p == "ollama":
+        return config.OLLAMA_MODEL
+    return config.AZURE_OPENAI_DEPLOYMENT
+
+
+def _build_payload(model: str, messages: List[Dict],
+                   max_tokens: int, temperature: float) -> dict:
+    """Build the request body, using the correct token-limit field per provider."""
+    payload: dict = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+    }
+    # Azure uses max_completion_tokens; OpenAI and Ollama use max_tokens
+    if config.AI_PROVIDER == "azure":
+        payload["max_completion_tokens"] = max_tokens
+    else:
+        payload["max_tokens"] = max_tokens
+    return payload
 
 
 def _strip_markdown_fences(text: str) -> str:
@@ -47,38 +119,22 @@ def _strip_markdown_fences(text: str) -> str:
 
 
 def _call_openai_api(messages: List[Dict], max_tokens: int, temperature: float) -> str:
-    """Call Azure OpenAI chat completions and return the response text.
+    """Call the active provider's chat completions endpoint.
 
-    Returns an empty string if the response has no content.
-    Raises ValueError on HTTP errors, re-raises other exceptions.
+    Returns the response text, or an empty string if there is no content.
+    Raises ValueError on configuration errors or HTTP errors.
     """
-    if not AZURE_OPENAI_ENDPOINT or not AZURE_OPENAI_API_KEY:
-        raise ValueError(
-            "Azure OpenAI credentials not configured. "
-            "Please set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY in .env file."
-        )
-    if not AZURE_OPENAI_DEPLOYMENT:
-        raise ValueError(
-            "Azure OpenAI deployment name not configured. "
-            "Please set AZURE_OPENAI_DEPLOYMENT in .env file."
-        )
+    _validate_credentials()
 
-    api_url = _build_api_url()
-    headers = {
-        "Content-Type": "application/json",
-        "api-key": AZURE_OPENAI_API_KEY,
-    }
-    payload = {
-        "model": AZURE_OPENAI_DEPLOYMENT,
-        "messages": messages,
-        "max_completion_tokens": max_tokens,
-        "temperature": temperature,
-    }
+    url     = _build_api_url()
+    headers = _build_headers()
+    model   = _get_model()
+    payload = _build_payload(model, messages, max_tokens, temperature)
 
-    print(f"Calling Azure OpenAI API: {api_url}")
+    print(f"Calling {config.AI_PROVIDER} API: {url}")
     try:
         with httpx.Client(timeout=120.0) as client:
-            response = client.post(api_url, headers=headers, json=payload)
+            response = client.post(url, headers=headers, json=payload)
             response.raise_for_status()
     except httpx.HTTPStatusError as e:
         raise ValueError(f"API error: {e.response.status_code} - {e.response.text[:200]}") from e
