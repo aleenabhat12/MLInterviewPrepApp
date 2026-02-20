@@ -4,7 +4,7 @@ A desktop application that uses AI to generate multiple-choice questions on Mach
 
 ## Features
 
-- **AI-Powered Question Generation**: Uses GitHub Models (GPT-4.1-mini) to generate relevant, challenging MCQ questions
+- **AI-Powered Question Generation**: Uses Azure OpenAI to generate relevant, challenging MCQ questions
 - **Three Difficulty Levels**: Beginner, Intermediate, and Advanced
 - **Comprehensive Topic Coverage**:
   - Statistics and Probability
@@ -26,7 +26,7 @@ A desktop application that uses AI to generate multiple-choice questions on Mach
 ## Prerequisites
 
 1. **Python 3.8+** installed on your system
-2. **GitHub Personal Access Token (PAT)** with access to GitHub Models
+2. **Azure OpenAI resource** with a deployed model (e.g. `gpt-4o`, `gpt-4`)
 
 ## Installation
 
@@ -37,23 +37,33 @@ A desktop application that uses AI to generate multiple-choice questions on Mach
    pip install -r requirements.txt
    ```
 
-   The `--pre` flag may be needed for preview packages.
+3. Set up your Azure OpenAI credentials by copying the example env file and filling in your values:
+   ```bash
+   cp .env.example .env
+   ```
 
-3. Set up your GitHub Token:
-   
+   Then edit `.env`:
+   ```
+   AZURE_OPENAI_ENDPOINT=https://<your-resource>.openai.azure.com/
+   AZURE_OPENAI_API_KEY=<your-api-key>
+   AZURE_OPENAI_DEPLOYMENT=<your-deployment-name>
+   AZURE_OPENAI_API_VERSION=2024-08-01-preview
+   ```
+
+   Alternatively, set the variables in your shell:
+
    **Windows (PowerShell):**
    ```powershell
-   $env:GITHUB_TOKEN = "your_github_token_here"
+   $env:AZURE_OPENAI_ENDPOINT = "https://<your-resource>.openai.azure.com/"
+   $env:AZURE_OPENAI_API_KEY  = "<your-api-key>"
+   $env:AZURE_OPENAI_DEPLOYMENT = "<your-deployment-name>"
    ```
-   
-   **Windows (Command Prompt):**
-   ```cmd
-   set GITHUB_TOKEN=your_github_token_here
-   ```
-   
+
    **Linux/macOS:**
    ```bash
-   export GITHUB_TOKEN="your_github_token_here"
+   export AZURE_OPENAI_ENDPOINT="https://<your-resource>.openai.azure.com/"
+   export AZURE_OPENAI_API_KEY="<your-api-key>"
+   export AZURE_OPENAI_DEPLOYMENT="<your-deployment-name>"
    ```
 
 ## Running the Application
@@ -87,6 +97,7 @@ MLInterviewPrep/
 ├── config.py           # Configuration and constants
 ├── data_manager.py     # Data persistence and statistics
 ├── question_generator.py # LLM-based question generation
+├── scenario_questions.py # Built-in scenario/trick questions
 ├── quiz_history.json   # Your saved progress (auto-generated)
 ├── requirements.txt    # Python dependencies
 └── README.md          # This file
@@ -102,13 +113,14 @@ MLInterviewPrep/
 
 ## Troubleshooting
 
-### "GITHUB_TOKEN environment variable not set"
-Make sure you've set the GITHUB_TOKEN environment variable before running the app.
+### "Azure OpenAI credentials not configured"
+Make sure `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, and `AZURE_OPENAI_DEPLOYMENT` are set — either in a `.env` file or as environment variables.
 
 ### Questions fail to generate
 - Check your internet connection
-- Verify your GitHub token is valid and has access to GitHub Models
-- Try again - sometimes API calls can fail temporarily
+- Verify your Azure OpenAI resource is active and the deployment name is correct
+- Check that your API key has not expired
+- Try again — sometimes API calls can fail temporarily
 
 ### App crashes on startup
 - Ensure all dependencies are installed: `pip install -r requirements.txt`
@@ -121,3 +133,4 @@ MIT License - Feel free to use and modify for your interview preparation!
 ---
 
 Good luck with your ML interviews! 🚀
+

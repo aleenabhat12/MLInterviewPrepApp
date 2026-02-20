@@ -100,19 +100,22 @@ def record_quiz_result(questions: List[Dict], answers: List[int], level: str) ->
     data["level_points"] += points_earned
     data["last_quiz_at"] = datetime.now().isoformat()
     
-    # Check for level up
+    # Check for level up (loop to handle earning enough points to skip multiple levels)
     level_up = False
-    new_level = level
-    points_to_next = DIFFICULTY_LEVELS[level]["points_to_level_up"]
-    
-    if points_to_next and data["level_points"] >= points_to_next:
-        levels = list(DIFFICULTY_LEVELS.keys())
-        current_idx = levels.index(level)
-        if current_idx < len(levels) - 1:
-            new_level = levels[current_idx + 1]
-            data["current_level"] = new_level
-            data["level_points"] = data["level_points"] - points_to_next
-            level_up = True
+    new_level = data["current_level"]
+    levels = list(DIFFICULTY_LEVELS.keys())
+
+    while True:
+        points_to_next = DIFFICULTY_LEVELS[new_level]["points_to_level_up"]
+        if points_to_next is None or data["level_points"] < points_to_next:
+            break
+        current_idx = levels.index(new_level)
+        if current_idx >= len(levels) - 1:
+            break
+        new_level = levels[current_idx + 1]
+        data["current_level"] = new_level
+        data["level_points"] -= points_to_next
+        level_up = True
     
     # Record quiz in history
     quiz_record = {
