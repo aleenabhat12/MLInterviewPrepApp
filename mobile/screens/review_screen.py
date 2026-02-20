@@ -5,7 +5,7 @@ from kivy.graphics import Color, Rectangle, RoundedRectangle
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
-from kivy.uix.screen import Screen
+from kivy.uix.screenmanager import Screen
 from kivy.uix.scrollview import ScrollView
 
 from screens.styles import (

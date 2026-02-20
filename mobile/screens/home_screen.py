@@ -5,7 +5,7 @@ from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.progressbar import ProgressBar
-from kivy.uix.screen import Screen
+from kivy.uix.screenmanager import Screen
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.togglebutton import ToggleButton
 
@@ -13,7 +13,6 @@ from screens.styles import (
     BG, CARD, DANGER, INFO, LEVEL_COLORS, PRIMARY, SUBTEXT, SUCCESS,
     TEXT, WARNING, action_button, auto_label, card_layout,
 )
-from kivy.metrics import dp
 from kivy.graphics import Color, Rectangle
 
 
