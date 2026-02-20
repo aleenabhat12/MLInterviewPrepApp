@@ -64,7 +64,7 @@ class QuizScreen(Screen):
             app.current_questions = questions
             Clock.schedule_once(self._on_loaded)
         except Exception as exc:
-            Clock.schedule_once(lambda _: self._show_error(str(exc)))
+            Clock.schedule_once(lambda _, e=exc: self._show_error(str(e)))
 
     def _on_loaded(self, *_):
         app = App.get_running_app()
