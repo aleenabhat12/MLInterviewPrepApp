@@ -20,7 +20,11 @@ def load_data() -> Dict:
     if os.path.exists(data_path):
         try:
             with open(data_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                data = json.load(f)
+            # Trim history on load so it never grows beyond the limit in memory
+            if len(data.get("quiz_history", [])) > 100:
+                data["quiz_history"] = data["quiz_history"][-100:]
+            return data
         except (json.JSONDecodeError, IOError):
             return create_default_data()
     return create_default_data()
@@ -127,11 +131,7 @@ def record_quiz_result(questions: List[Dict], answers: List[int], level: str) ->
         "topics": list(topic_results.keys())
     }
     data["quiz_history"].append(quiz_record)
-    
-    # Keep only last 100 quizzes in history
-    if len(data["quiz_history"]) > 100:
-        data["quiz_history"] = data["quiz_history"][-100:]
-    
+
     save_data(data)
     
     return {

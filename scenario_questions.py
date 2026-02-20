@@ -673,3 +673,79 @@ def get_scenario_categories() -> List[str]:
 def get_scenario_question_count() -> int:
     """Return total number of scenario questions."""
     return len(SCENARIO_QUESTIONS)
+
+
+# Condensed few-shot examples used to prime LLM prompts in question_generator.py.
+# Keeping them here co-locates all scenario-related data in one place.
+SCENARIO_FEW_SHOT_EXAMPLES: List[Dict] = [
+    {
+        "topic": "Tokenization / Domain Adaptation",
+        "category": "LLM & NLP",
+        "scenario": "A medical-domain startup is building an LLM assistant for radiology reports. Their dataset contains heavy use of complex, compound medical terms (e.g., 'hyperdenseextra-axialhemorrhage'). Consider the tradeoffs for: vocabulary fragmentation, model perplexity, downstream fine-tuning stability, and rare word generalization.",
+        "question": "Which tokenization strategy should they choose?",
+        "options": [
+            "Train a tokenizer from scratch on their domain corpus",
+            "Use the tokenizer from a general-purpose LLM (e.g., GPT-style)",
+            "Use a hybrid approach (retain base tokenizer + add domain-specific merges)",
+            "Use character-level tokenization for maximum flexibility"
+        ],
+        "correct_answer": 2,
+        "explanation": "The hybrid approach (C) is optimal because: it reduces vocabulary fragmentation for medical terms while retaining pretrained knowledge, balances model perplexity across domain and general text, maintains fine-tuning stability by keeping most embeddings pretrained, and benefits from transfer learning for rare word generalization. Training from scratch loses pretrained knowledge, using general tokenizer causes severe fragmentation, and character-level is computationally expensive."
+    },
+    {
+        "topic": "Overfitting / Bias-Variance",
+        "category": "Model Evaluation",
+        "scenario": "You train a binary classifier with: Training accuracy: 100%, Validation accuracy: fluctuates between 45-60%, ROC curve on held-out set is almost diagonal, SHAP values show unstable feature importance between runs.",
+        "question": "What is happening and what minimal ONE change would you apply first?",
+        "options": [
+            "Underfitting - increase model complexity by adding more layers",
+            "Severe overfitting - add regularization (L2/Dropout)",
+            "Data leakage - rebuild the train/validation split",
+            "Label noise - apply label smoothing"
+        ],
+        "correct_answer": 1,
+        "explanation": "This is severe overfitting: 100% training / ~50% validation = memorization, diagonal ROC = random guessing performance, fluctuating SHAP = model learns different spurious patterns each run. Regularization (L2/Dropout) is the best first fix as it directly penalizes complexity and prevents memorization. Adding layers would worsen overfitting."
+    },
+    {
+        "topic": "Distribution Shift / MLOps",
+        "category": "MLOps",
+        "scenario": "A segmentation model works perfectly on validation but fails on real-world data showing: lower resolution, motion blur, different lighting, new background patterns.",
+        "question": "What is the FASTEST mitigation without retraining?",
+        "options": [
+            "Collect more training data from the real-world distribution",
+            "Test-Time Augmentation (TTA) - average predictions over augmented versions of input",
+            "Fine-tune the model on a small set of real-world examples",
+            "Switch to a larger model architecture"
+        ],
+        "correct_answer": 1,
+        "explanation": "Test-Time Augmentation (TTA) is the fastest fix without retraining: apply multiple augmentations to each test image (flip, rotate, scale), run inference on all versions, average predictions. This helps because some augmentations may match training distribution better, and averaging reduces prediction variance. No model changes or retraining needed."
+    },
+    {
+        "topic": "Imbalanced Data Evaluation",
+        "category": "Model Evaluation",
+        "scenario": "Dataset: 0.5% fraud, 99.5% legitimate. A candidate reports: 'Model accuracy = 99.4%, so performance is excellent.' Additional evaluation shows: AUROC = 0.62, AUPRC = 0.04, FPR at threshold = 18%.",
+        "question": "Which single metric BEST captures real-world performance for this problem?",
+        "options": [
+            "Accuracy - it gives the overall correctness",
+            "AUROC - it measures discrimination ability",
+            "AUPRC - it focuses on minority class performance",
+            "F1 Score at default 0.5 threshold"
+        ],
+        "correct_answer": 2,
+        "explanation": "AUPRC is best for imbalanced data because: it focuses on the minority class (fraud), is not inflated by true negatives, and directly measures what matters (finding fraud). The 99.4% accuracy is meaningless - a model predicting 'always legitimate' achieves 99.5% accuracy! AUROC can be misleadingly high with class imbalance."
+    },
+    {
+        "topic": "Loss Landscape / Optimization",
+        "category": "Training & Optimization",
+        "scenario": "Your model trains normally for 10 epochs, then suddenly the loss spikes and remains unstable. You check: gradient norms → exploding, weight norms → growing, learning rate scheduler → constant LR, batch size → small (8).",
+        "question": "How would you patch this without retraining from scratch?",
+        "options": [
+            "Delete the model and redesign the architecture",
+            "Load checkpoint from epoch 8-9, add gradient clipping, reduce learning rate",
+            "Increase batch size to 512 and continue from current unstable state",
+            "Switch optimizer from Adam to SGD with momentum"
+        ],
+        "correct_answer": 1,
+        "explanation": "Best patch: Load checkpoint from epoch 8-9 (last stable state), add gradient clipping (e.g., max_norm=1.0), reduce learning rate by 10x. This works because: checkpoint restores stable weights, gradient clipping prevents explosion, lower LR reduces overshoot risk. Continuing from unstable state won't recover."
+    }
+]
