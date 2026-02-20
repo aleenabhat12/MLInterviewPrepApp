@@ -12,7 +12,7 @@ from kivy.uix.togglebutton import ToggleButton
 
 from screens.styles import (
     BG, CARD, DANGER, INFO, LEVEL_COLORS, PRIMARY, SUBTEXT, SUCCESS,
-    TEXT, WARNING, action_button, auto_label, card_layout,
+    TEXT, WARNING, action_button, auto_label, card_layout, emoji_label, emoji_markup,
 )
 from kivy.graphics import Color, Rectangle
 
@@ -61,7 +61,8 @@ class HomeScreen(Screen):
         )
         from kivy.uix.label import Label as _Label
         title_lbl = _Label(
-            text="🎯  ML Interview Prep",
+            text=emoji_markup("🎯  ML Interview Prep"),
+            markup=True,
             font_size=dp(18),
             bold=True,
             color=TEXT,
@@ -119,7 +120,7 @@ class HomeScreen(Screen):
             pts_text = "🏆 Max Level Reached!"
         else:
             pts_text = f"{pts} / {pts_next} pts to next level"
-        level_card.add_widget(auto_label(text=pts_text, color=SUBTEXT, halign="center"))
+        level_card.add_widget(emoji_label(text=pts_text, color=SUBTEXT, halign="center"))
         content.add_widget(level_card)
 
         # ── Stats row ─────────────────────────────────────────────────
@@ -149,7 +150,8 @@ class HomeScreen(Screen):
         self._focus_weak = False  # track toggle state
 
         focus_toggle = ToggleButton(
-            text="🎯  Focus on Weak Areas",
+            text=emoji_markup("🎯  Focus on Weak Areas"),
+            markup=True,
             font_size=dp(14),
             background_normal="",
             background_down="",
@@ -187,7 +189,7 @@ class HomeScreen(Screen):
         weak = get_weak_topics(limit=3)
         if weak:
             weak_card = card_layout(spacing=dp(6))
-            weak_card.add_widget(auto_label(
+            weak_card.add_widget(emoji_label(
                 text="📉 Needs Improvement", font_size=dp(13),
                 bold=True, color=DANGER,
             ))

@@ -26,7 +26,7 @@ from kivy.uix.textinput import TextInput
 
 from screens.styles import (
     BG, CARD, DANGER, INFO, PRIMARY, SUBTEXT, SUCCESS, TEXT, WARNING,
-    action_button, auto_label, card_layout,
+    action_button, auto_label, card_layout, emoji_label, emoji_markup,
 )
 
 # Map display label → internal key
@@ -90,7 +90,7 @@ class SettingsScreen(Screen):
         self._content.bind(minimum_height=self._content.setter("height"))
 
         # ── Title ──────────────────────────────────────────────────────
-        self._content.add_widget(auto_label(
+        self._content.add_widget(emoji_label(
             text="⚙️  Settings",
             font_size=dp(22), bold=True, halign="center", color=TEXT,
         ))
@@ -220,8 +220,9 @@ class SettingsScreen(Screen):
         return values
 
     def _set_status(self, msg: str, color=SUBTEXT):
+        self._status_lbl.markup = True
         self._status_lbl.color = color
-        self._status_lbl.text = msg
+        self._status_lbl.text = emoji_markup(msg)
 
     # ------------------------------------------------------------------
     def _test_connection(self):

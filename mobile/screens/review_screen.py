@@ -10,7 +10,7 @@ from kivy.uix.scrollview import ScrollView
 
 from screens.styles import (
     BG, CARD, DANGER, PRIMARY, SUBTEXT, SUCCESS, TEXT,
-    action_button, auto_label, card_layout,
+    action_button, auto_label, card_layout, emoji_markup,
 )
 
 _OPTION_LABELS = ["A", "B", "C", "D"]
@@ -87,14 +87,14 @@ class ReviewScreen(Screen):
 
         # Question number + result icon
         card.add_widget(auto_label(
-            text=f"{result_icon} [b]Q{num}.[/b]  {q['question']}",
+            text=emoji_markup(f"{result_icon} [b]Q{num}.[/b]  {q['question']}"),
             font_size=dp(13), markup=True, color=TEXT,
         ))
 
         # Options: highlight correct green, user-wrong red
         for i, opt in enumerate(q.get("options", [])):
             if i == correct_ans and i == user_ans:
-                prefix = "✅ "
+                prefix = emoji_markup("✅ ")
                 color  = SUCCESS
             elif i == correct_ans:
                 prefix = "✔ "
@@ -108,7 +108,7 @@ class ReviewScreen(Screen):
 
             card.add_widget(auto_label(
                 text=f"{prefix}{_OPTION_LABELS[i]}.  {opt}",
-                font_size=dp(12), color=color,
+                font_size=dp(12), color=color, markup=True,
             ))
 
         # Explanation (collapsed behind a small divider label)

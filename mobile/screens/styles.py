@@ -1,5 +1,6 @@
 """Shared color constants and lightweight widget factories for the mobile UI."""
 
+import re
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
@@ -24,6 +25,18 @@ LEVEL_COLORS = {
     "intermediate": WARNING,
     "advanced":     DANGER,
 }
+
+
+# ── Emoji rendering ───────────────────────────────────────────────────────────
+# Characters in the supplementary planes (U+10000+) are modern colour emoji.
+# Kivy's default Roboto font has no glyphs for them; we wrap them in a
+# [font=EmojiFont] markup tag so Kivy uses the registered emoji font instead.
+_SUPP_EMOJI = re.compile(r'[\U00010000-\U0010FFFF]', flags=re.UNICODE)
+
+
+def emoji_markup(text: str) -> str:
+    """Wrap supplementary-plane emoji in EmojiFont markup tags."""
+    return _SUPP_EMOJI.sub(lambda m: f"[font=EmojiFont]{m.group()}[/font]", text)
 
 
 # ── Widget factories ──────────────────────────────────────────────────────────
@@ -66,10 +79,28 @@ def auto_label(text="", font_size=None, color=TEXT, bold=False, halign="left", *
     return lbl
 
 
+def emoji_label(text="", font_size=None, color=TEXT, bold=False, halign="left", **kwargs):
+    """Like auto_label but applies EmojiFont markup for emoji characters.
+
+    Use this for static UI strings that contain emoji.  Do NOT use it for
+    dynamic content (e.g. quiz questions) that may contain literal brackets.
+    """
+    return auto_label(
+        text=emoji_markup(text),
+        font_size=font_size,
+        color=color,
+        bold=bold,
+        halign=halign,
+        markup=True,
+        **kwargs,
+    )
+
+
 def action_button(text, bg_color=PRIMARY, height=dp(52), font_size=None, **kwargs):
-    """Styled action button with no default background image."""
+    """Styled action button — automatically renders emoji via EmojiFont markup."""
     return Button(
-        text=text,
+        text=emoji_markup(text),
+        markup=True,
         font_size=font_size or dp(15),
         bold=True,
         color=TEXT,

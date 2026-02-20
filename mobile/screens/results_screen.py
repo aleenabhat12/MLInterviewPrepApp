@@ -10,7 +10,7 @@ from kivy.uix.scrollview import ScrollView
 
 from screens.styles import (
     BG, CARD, DANGER, INFO, LEVEL_COLORS, PRIMARY, SUBTEXT,
-    SUCCESS, TEXT, WARNING, action_button, auto_label, card_layout,
+    SUCCESS, TEXT, WARNING, action_button, auto_label, card_layout, emoji_label, emoji_markup,
 )
 
 
@@ -54,7 +54,7 @@ class ResultsScreen(Screen):
         content.bind(minimum_height=content.setter("height"))
 
         # ── Title ──────────────────────────────────────────────────────
-        content.add_widget(auto_label(
+        content.add_widget(emoji_label(
             text="Quiz Complete! 🎉",
             font_size=dp(22), bold=True, halign="center",
         ))
@@ -80,7 +80,7 @@ class ResultsScreen(Screen):
             lu_card = card_layout()
             lvl_color = LEVEL_COLORS.get(new_lvl, PRIMARY)
             lu_card.add_widget(auto_label(
-                text=f"🏆 Level Up!  →  [b][color={_hex(lvl_color)}]{new_lvl.title()}[/color][/b]",
+                text=emoji_markup(f"🏆 Level Up!  →  [b][color={_hex(lvl_color)}]{new_lvl.title()}[/color][/b]"),
                 font_size=dp(18), halign="center", markup=True,
             ))
             content.add_widget(lu_card)
@@ -100,7 +100,7 @@ class ResultsScreen(Screen):
         )
         prog_card.add_widget(bar)
         pts_label = "Max level reached 🏆" if pts_next is None else f"{l_pts} / {pts_next} pts"
-        prog_card.add_widget(auto_label(text=pts_label, color=SUBTEXT, font_size=dp(12)))
+        prog_card.add_widget(emoji_label(text=pts_label, color=SUBTEXT, font_size=dp(12)))
         content.add_widget(prog_card)
 
         # ── Performance hint ───────────────────────────────────────────
@@ -110,7 +110,7 @@ class ResultsScreen(Screen):
             hint = "👍 Good effort! Review the questions you missed."
         else:
             hint = "⭐ Excellent work! Keep it up."
-        content.add_widget(auto_label(text=hint, font_size=dp(13), color=SUBTEXT, halign="center"))
+        content.add_widget(emoji_label(text=hint, font_size=dp(13), color=SUBTEXT, halign="center"))
 
         # ── Action buttons ─────────────────────────────────────────────
         review_btn = action_button("📋  Review Answers", bg_color=INFO)
