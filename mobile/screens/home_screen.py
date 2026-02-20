@@ -4,6 +4,7 @@ from kivy.app import App
 from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
 from kivy.uix.progressbar import ProgressBar
 from kivy.uix.screenmanager import Screen
 from kivy.uix.scrollview import ScrollView
@@ -53,14 +54,33 @@ class HomeScreen(Screen):
         )
         content.bind(minimum_height=content.setter("height"))
 
-        # ── Title ──────────────────────────────────────────────────────
-        content.add_widget(auto_label(
+        # ── Title row with Settings button ────────────────────────────
+        title_row = BoxLayout(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=dp(40),
+            spacing=dp(8),
+        )
+        title_row.add_widget(auto_label(
             text="🎯 ML Interview Prep",
-            font_size=dp(22),
+            font_size=dp(20),
             bold=True,
-            halign="center",
+            halign="left",
             color=TEXT,
         ))
+        settings_btn = Button(
+            text="⚙️",
+            font_size=dp(20),
+            background_normal="",
+            background_down="",
+            background_color=(0, 0, 0, 0),
+            color=SUBTEXT,
+            size_hint=(None, None),
+            size=(dp(40), dp(40)),
+        )
+        settings_btn.bind(on_release=lambda _: App.get_running_app().go_settings())
+        title_row.add_widget(settings_btn)
+        content.add_widget(title_row)
 
         # ── Level progress card ────────────────────────────────────────
         level_card = card_layout()

@@ -32,13 +32,25 @@ class MLInterviewPrepMobileApp(App):
         from screens.quiz_screen import QuizScreen
         from screens.results_screen import ResultsScreen
         from screens.review_screen import ReviewScreen
+        from screens.settings_screen import SettingsScreen
 
         self.sm = ScreenManager(transition=SlideTransition())
         self.sm.add_widget(HomeScreen(name="home"))
         self.sm.add_widget(QuizScreen(name="quiz"))
         self.sm.add_widget(ResultsScreen(name="results"))
         self.sm.add_widget(ReviewScreen(name="review"))
+        self.sm.add_widget(SettingsScreen(name="settings"))
         return self.sm
+
+    def on_start(self):
+        """After build, redirect to Settings on first run."""
+        from settings_manager import is_configured, load_settings, apply_settings
+        settings = load_settings()
+        apply_settings(settings)          # always push saved values into config
+        if not is_configured(settings):
+            settings_screen = self.sm.get_screen("settings")
+            settings_screen.first_run = True
+            self.sm.current = "settings"
 
     # ------------------------------------------------------------------
     # Navigation helpers called by screens
@@ -70,3 +82,8 @@ class MLInterviewPrepMobileApp(App):
         """Navigate back to the home screen."""
         self.sm.transition.direction = "right"
         self.sm.current = "home"
+
+    def go_settings(self):
+        """Navigate to the settings screen."""
+        self.sm.transition.direction = "left"
+        self.sm.current = "settings"
