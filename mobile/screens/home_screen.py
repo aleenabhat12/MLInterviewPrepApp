@@ -44,6 +44,48 @@ class HomeScreen(Screen):
             size=lambda w, v: setattr(self._bg_rect, "size", v),
         )
 
+        # ── Fixed header bar (always visible, never scrolls) ───────────
+        header = BoxLayout(
+            orientation="horizontal",
+            size_hint=(1, None),
+            height=dp(56),
+            padding=[dp(16), dp(8)],
+            spacing=dp(8),
+        )
+        with header.canvas.before:
+            Color(*CARD)
+            self._header_rect = Rectangle(pos=header.pos, size=header.size)
+        header.bind(
+            pos=lambda w, v: setattr(self._header_rect, "pos", v),
+            size=lambda w, v: setattr(self._header_rect, "size", v),
+        )
+        from kivy.uix.label import Label as _Label
+        title_lbl = _Label(
+            text="🎯  ML Interview Prep",
+            font_size=dp(18),
+            bold=True,
+            color=TEXT,
+            halign="left",
+            valign="middle",
+            size_hint=(1, 1),
+        )
+        title_lbl.bind(size=lambda w, _: setattr(w, "text_size", w.size))
+        header.add_widget(title_lbl)
+
+        settings_btn = Button(
+            text="⚙️",
+            font_size=dp(22),
+            background_normal="",
+            background_down="",
+            background_color=PRIMARY,
+            color=TEXT,
+            size_hint=(None, None),
+            size=(dp(44), dp(40)),
+        )
+        settings_btn.bind(on_release=lambda _: App.get_running_app().go_settings())
+        header.add_widget(settings_btn)
+        root.add_widget(header)
+
         # ── Scrollable content ─────────────────────────────────────────
         sv = ScrollView(size_hint=(1, 1))
         content = BoxLayout(
@@ -53,34 +95,6 @@ class HomeScreen(Screen):
             size_hint_y=None,
         )
         content.bind(minimum_height=content.setter("height"))
-
-        # ── Title row with Settings button ────────────────────────────
-        title_row = BoxLayout(
-            orientation="horizontal",
-            size_hint_y=None,
-            height=dp(40),
-            spacing=dp(8),
-        )
-        title_row.add_widget(auto_label(
-            text="🎯 ML Interview Prep",
-            font_size=dp(20),
-            bold=True,
-            halign="left",
-            color=TEXT,
-        ))
-        settings_btn = Button(
-            text="⚙️",
-            font_size=dp(20),
-            background_normal="",
-            background_down="",
-            background_color=(0, 0, 0, 0),
-            color=SUBTEXT,
-            size_hint=(None, None),
-            size=(dp(40), dp(40)),
-        )
-        settings_btn.bind(on_release=lambda _: App.get_running_app().go_settings())
-        title_row.add_widget(settings_btn)
-        content.add_widget(title_row)
 
         # ── Level progress card ────────────────────────────────────────
         level_card = card_layout()
