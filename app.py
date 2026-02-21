@@ -8,12 +8,11 @@ from typing import List, Dict, Optional
 try:
     import ttkbootstrap as ttk_boot
     from ttkbootstrap.constants import *
-except ImportError:
-    print("ttkbootstrap not installed. Installing...")
-    import subprocess
-    subprocess.check_call(["pip", "install", "ttkbootstrap"])
-    import ttkbootstrap as ttk_boot
-    from ttkbootstrap.constants import *
+except ImportError as e:
+    raise ImportError(
+        "Required package 'ttkbootstrap' is not installed. "
+        "Run: pip install -r requirements.txt"
+    ) from e
 
 # Fallback constant definitions (for static analysis)
 if 'BOTH' not in dir():

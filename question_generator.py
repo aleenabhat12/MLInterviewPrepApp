@@ -1,14 +1,150 @@
-"""Question generator using Azure OpenAI."""
+"""Question generator — supports Azure OpenAI, OpenAI, and Ollama providers."""
 
 import json
 import random
 from typing import List, Dict, Optional
 import httpx
 
-from config import (
-    ML_TOPICS, QUESTIONS_PER_QUIZ,
-    AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT, AZURE_OPENAI_API_VERSION
-)
+import config
+from config import ML_TOPICS, QUESTIONS_PER_QUIZ
+from scenario_questions import SCENARIO_FEW_SHOT_EXAMPLES
+
+
+# ---------------------------------------------------------------------------
+# Provider helpers
+# ---------------------------------------------------------------------------
+
+def _validate_credentials() -> None:
+    """Raise ValueError if the active provider's credentials are missing."""
+    p = config.AI_PROVIDER
+    if p == "openai":
+        if not config.OPENAI_API_KEY:
+            raise ValueError("OpenAI API key not configured. Set OPENAI_API_KEY in settings.")
+        if not config.OPENAI_MODEL:
+            raise ValueError("OpenAI model not configured. Set OPENAI_MODEL in settings.")
+    elif p == "ollama":
+        if not config.OLLAMA_BASE_URL:
+            raise ValueError("Ollama base URL not configured. Set OLLAMA_BASE_URL in settings.")
+        if not config.OLLAMA_MODEL:
+            raise ValueError("Ollama model not configured. Set OLLAMA_MODEL in settings.")
+    else:  # azure
+        if not config.AZURE_OPENAI_ENDPOINT or not config.AZURE_OPENAI_API_KEY:
+            raise ValueError(
+                "Azure OpenAI credentials not configured. "
+                "Please set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY in .env or settings."
+            )
+        if not config.AZURE_OPENAI_DEPLOYMENT:
+            raise ValueError(
+                "Azure OpenAI deployment name not configured. "
+                "Please set AZURE_OPENAI_DEPLOYMENT in .env or settings."
+            )
+
+
+def _build_api_url() -> str:
+    """Build the chat completions URL for the active provider."""
+    p = config.AI_PROVIDER
+    if p == "openai":
+        return "https://api.openai.com/v1/chat/completions"
+    if p == "ollama":
+        return f"{config.OLLAMA_BASE_URL.rstrip('/')}/v1/chat/completions"
+    # azure
+    base = config.AZURE_OPENAI_ENDPOINT.rstrip("/")
+    if base.endswith("/v1"):
+        return f"{base}/chat/completions"
+    return (
+        f"{base}/openai/deployments/{config.AZURE_OPENAI_DEPLOYMENT}"
+        f"/chat/completions?api-version={config.AZURE_OPENAI_API_VERSION}"
+    )
+
+
+def _build_headers() -> dict:
+    """Build the HTTP headers for the active provider."""
+    p = config.AI_PROVIDER
+    headers = {"Content-Type": "application/json"}
+    if p == "openai":
+        headers["Authorization"] = f"Bearer {config.OPENAI_API_KEY}"
+    elif p == "ollama":
+        pass  # Ollama needs no auth header
+    else:  # azure
+        base = config.AZURE_OPENAI_ENDPOINT.rstrip("/")
+        if base.endswith("/v1"):
+            headers["Authorization"] = f"Bearer {config.AZURE_OPENAI_API_KEY}"
+        else:
+            headers["api-key"] = config.AZURE_OPENAI_API_KEY
+    return headers
+
+
+def _get_model() -> str:
+    """Return the model/deployment name for the active provider."""
+    p = config.AI_PROVIDER
+    if p == "openai":
+        return config.OPENAI_MODEL
+    if p == "ollama":
+        return config.OLLAMA_MODEL
+    return config.AZURE_OPENAI_DEPLOYMENT
+
+
+def _build_payload(model: str, messages: List[Dict],
+                   max_tokens: int, temperature: float) -> dict:
+    """Build the request body, using the correct token-limit field per provider."""
+    payload: dict = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+    }
+    # Azure uses max_completion_tokens; OpenAI and Ollama use max_tokens
+    if config.AI_PROVIDER == "azure":
+        payload["max_completion_tokens"] = max_tokens
+    else:
+        payload["max_tokens"] = max_tokens
+    return payload
+
+
+def _strip_markdown_fences(text: str) -> str:
+    """Strip markdown code fences (```...```) from a response string."""
+    if not text.startswith("```"):
+        return text
+    lines = text.split("\n")
+    json_lines = []
+    in_block = False
+    for line in lines:
+        if line.startswith("```") and not in_block:
+            in_block = True
+            continue
+        elif line.startswith("```") and in_block:
+            break
+        elif in_block:
+            json_lines.append(line)
+    return "\n".join(json_lines)
+
+
+def _call_openai_api(messages: List[Dict], max_tokens: int, temperature: float) -> str:
+    """Call the active provider's chat completions endpoint.
+
+    Returns the response text, or an empty string if there is no content.
+    Raises ValueError on configuration errors or HTTP errors.
+    """
+    _validate_credentials()
+
+    url     = _build_api_url()
+    headers = _build_headers()
+    model   = _get_model()
+    payload = _build_payload(model, messages, max_tokens, temperature)
+
+    print(f"Calling {config.AI_PROVIDER} API: {url}")
+    try:
+        with httpx.Client(timeout=120.0) as client:
+            response = client.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise ValueError(f"API error: {e.response.status_code} - {e.response.text[:200]}") from e
+
+    result = response.json()
+    if "choices" in result and len(result["choices"]) > 0:
+        return result["choices"][0].get("message", {}).get("content", "")
+
+    print(f"Empty response from API: {result}")
+    return ""
 
 
 def generate_questions(
@@ -31,12 +167,6 @@ def generate_questions(
     Returns:
         List of question dictionaries
     """
-    if not AZURE_OPENAI_ENDPOINT or not AZURE_OPENAI_API_KEY:
-        raise ValueError(
-            "Azure OpenAI credentials not configured. "
-            "Please set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY in .env file."
-        )
-    
     # Select topics for questions - distribute across all topics
     if topics:
         selected_topics = topics
@@ -106,91 +236,39 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks, just p
 
 Generate all {num_questions} questions now:"""
 
+    messages = [
+        {
+            "role": "system",
+            "content": "You are an expert ML engineer and educator creating interview preparation questions. Generate accurate, educational, and appropriately challenging multiple choice questions. Always respond with valid JSON only, no markdown formatting."
+        },
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ]
+
     try:
-        # Build the API URL for Azure OpenAI
-        # The endpoint already has /openai/v1/ so we just add chat/completions
-        base_url = AZURE_OPENAI_ENDPOINT.rstrip('/')
-        if base_url.endswith('/v1'):
-            api_url = f"{base_url}/chat/completions"
-        else:
-            api_url = f"{base_url}/chat/completions?api-version={AZURE_OPENAI_API_VERSION}"
-        
-        headers = {
-            "Content-Type": "application/json",
-            "api-key": AZURE_OPENAI_API_KEY,
-        }
-        
-        payload = {
-            "model": AZURE_OPENAI_DEPLOYMENT,
-            "max_completion_tokens": 16000,
-            "temperature": 0.7,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are an expert ML engineer and educator creating interview preparation questions. Generate accurate, educational, and appropriately challenging multiple choice questions. Always respond with valid JSON only, no markdown formatting."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
-        }
-        
-        print(f"Calling API: {api_url}")
-        
-        # Make the API call
-        with httpx.Client(timeout=120.0) as client:
-            response = client.post(api_url, headers=headers, json=payload)
-            response.raise_for_status()
-        
-        result = response.json()
-        
-        # Extract text from OpenAI response
-        response_text = ""
-        if "choices" in result and len(result["choices"]) > 0:
-            response_text = result["choices"][0].get("message", {}).get("content", "")
-        
+        response_text = _call_openai_api(messages, max_tokens=16000, temperature=0.7)
         if not response_text:
-            print(f"Empty response from API: {result}")
             return []
-        
-        # Clean up response - remove any markdown code blocks
-        response_text = response_text.strip()
-        if response_text.startswith("```"):
-            lines = response_text.split("\n")
-            json_lines = []
-            in_json = False
-            for line in lines:
-                if line.startswith("```") and not in_json:
-                    in_json = True
-                    continue
-                elif line.startswith("```") and in_json:
-                    break
-                elif in_json:
-                    json_lines.append(line)
-            response_text = "\n".join(json_lines)
-        
-        # Parse JSON
+
+        response_text = _strip_markdown_fences(response_text.strip())
         data = json.loads(response_text)
         questions = data.get("questions", [])
-        
-        # Validate questions
+
         validated_questions = []
         for q in questions:
             if all(key in q for key in ["topic", "question", "options", "correct_answer", "explanation"]):
                 if len(q["options"]) == 4 and 0 <= q["correct_answer"] <= 3:
                     validated_questions.append(q)
-        
+
         print(f"Generated {len(validated_questions)} valid questions out of {len(questions)} total")
         return validated_questions
-        
+
     except json.JSONDecodeError as e:
         print(f"Error parsing LLM response: {e}")
-        print(f"Response text: {response_text[:500] if 'response_text' in dir() else 'N/A'}")
+        print(f"Response text: {response_text[:500] if 'response_text' in locals() else 'N/A'}")
         return []
-    except httpx.HTTPStatusError as e:
-        print(f"HTTP error: {e.response.status_code} - {e.response.text}")
-        raise ValueError(f"API error: {e.response.status_code} - {e.response.text[:200]}")
     except Exception as e:
         print(f"Error generating questions: {e}")
         raise
@@ -200,81 +278,6 @@ def generate_single_question(topic: str, level: str) -> Optional[Dict]:
     """Generate a single question on a specific topic."""
     questions = generate_questions(level=level, topics=[topic], num_questions=1)
     return questions[0] if questions else None
-
-
-# Few-shot examples for scenario-based questions
-SCENARIO_FEW_SHOT_EXAMPLES = [
-    {
-        "topic": "Tokenization / Domain Adaptation",
-        "category": "LLM & NLP",
-        "scenario": "A medical-domain startup is building an LLM assistant for radiology reports. Their dataset contains heavy use of complex, compound medical terms (e.g., 'hyperdenseextra-axialhemorrhage'). Consider the tradeoffs for: vocabulary fragmentation, model perplexity, downstream fine-tuning stability, and rare word generalization.",
-        "question": "Which tokenization strategy should they choose?",
-        "options": [
-            "Train a tokenizer from scratch on their domain corpus",
-            "Use the tokenizer from a general-purpose LLM (e.g., GPT-style)",
-            "Use a hybrid approach (retain base tokenizer + add domain-specific merges)",
-            "Use character-level tokenization for maximum flexibility"
-        ],
-        "correct_answer": 2,
-        "explanation": "The hybrid approach (C) is optimal because: it reduces vocabulary fragmentation for medical terms while retaining pretrained knowledge, balances model perplexity across domain and general text, maintains fine-tuning stability by keeping most embeddings pretrained, and benefits from transfer learning for rare word generalization. Training from scratch loses pretrained knowledge, using general tokenizer causes severe fragmentation, and character-level is computationally expensive."
-    },
-    {
-        "topic": "Overfitting / Bias-Variance",
-        "category": "Model Evaluation",
-        "scenario": "You train a binary classifier with: Training accuracy: 100%, Validation accuracy: fluctuates between 45-60%, ROC curve on held-out set is almost diagonal, SHAP values show unstable feature importance between runs.",
-        "question": "What is happening and what minimal ONE change would you apply first?",
-        "options": [
-            "Underfitting - increase model complexity by adding more layers",
-            "Severe overfitting - add regularization (L2/Dropout)",
-            "Data leakage - rebuild the train/validation split",
-            "Label noise - apply label smoothing"
-        ],
-        "correct_answer": 1,
-        "explanation": "This is severe overfitting: 100% training / ~50% validation = memorization, diagonal ROC = random guessing performance, fluctuating SHAP = model learns different spurious patterns each run. Regularization (L2/Dropout) is the best first fix as it directly penalizes complexity and prevents memorization. Adding layers would worsen overfitting."
-    },
-    {
-        "topic": "Distribution Shift / MLOps",
-        "category": "MLOps",
-        "scenario": "A segmentation model works perfectly on validation but fails on real-world data showing: lower resolution, motion blur, different lighting, new background patterns.",
-        "question": "What is the FASTEST mitigation without retraining?",
-        "options": [
-            "Collect more training data from the real-world distribution",
-            "Test-Time Augmentation (TTA) - average predictions over augmented versions of input",
-            "Fine-tune the model on a small set of real-world examples",
-            "Switch to a larger model architecture"
-        ],
-        "correct_answer": 1,
-        "explanation": "Test-Time Augmentation (TTA) is the fastest fix without retraining: apply multiple augmentations to each test image (flip, rotate, scale), run inference on all versions, average predictions. This helps because some augmentations may match training distribution better, and averaging reduces prediction variance. No model changes or retraining needed."
-    },
-    {
-        "topic": "Imbalanced Data Evaluation",
-        "category": "Model Evaluation",
-        "scenario": "Dataset: 0.5% fraud, 99.5% legitimate. A candidate reports: 'Model accuracy = 99.4%, so performance is excellent.' Additional evaluation shows: AUROC = 0.62, AUPRC = 0.04, FPR at threshold = 18%.",
-        "question": "Which single metric BEST captures real-world performance for this problem?",
-        "options": [
-            "Accuracy - it gives the overall correctness",
-            "AUROC - it measures discrimination ability",
-            "AUPRC - it focuses on minority class performance",
-            "F1 Score at default 0.5 threshold"
-        ],
-        "correct_answer": 2,
-        "explanation": "AUPRC is best for imbalanced data because: it focuses on the minority class (fraud), is not inflated by true negatives, and directly measures what matters (finding fraud). The 99.4% accuracy is meaningless - a model predicting 'always legitimate' achieves 99.5% accuracy! AUROC can be misleadingly high with class imbalance."
-    },
-    {
-        "topic": "Loss Landscape / Optimization",
-        "category": "Training & Optimization",
-        "scenario": "Your model trains normally for 10 epochs, then suddenly the loss spikes and remains unstable. You check: gradient norms → exploding, weight norms → growing, learning rate scheduler → constant LR, batch size → small (8).",
-        "question": "How would you patch this without retraining from scratch?",
-        "options": [
-            "Delete the model and redesign the architecture",
-            "Load checkpoint from epoch 8-9, add gradient clipping, reduce learning rate",
-            "Increase batch size to 512 and continue from current unstable state",
-            "Switch optimizer from Adam to SGD with momentum"
-        ],
-        "correct_answer": 1,
-        "explanation": "Best patch: Load checkpoint from epoch 8-9 (last stable state), add gradient clipping (e.g., max_norm=1.0), reduce learning rate by 10x. This works because: checkpoint restores stable weights, gradient clipping prevents explosion, lower LR reduces overshoot risk. Continuing from unstable state won't recover."
-    }
-]
 
 
 SCENARIO_CATEGORIES = [
@@ -305,12 +308,6 @@ def generate_scenario_questions(
     Returns:
         List of scenario question dictionaries
     """
-    if not AZURE_OPENAI_ENDPOINT or not AZURE_OPENAI_API_KEY:
-        raise ValueError(
-            "Azure OpenAI credentials not configured. "
-            "Please set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY in .env file."
-        )
-    
     # Build few-shot examples string
     examples_str = ""
     for i, ex in enumerate(SCENARIO_FEW_SHOT_EXAMPLES[:3], 1):  # Use 3 examples
@@ -368,95 +365,44 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks, just p
 
 Generate {num_questions} unique, challenging scenario questions now:"""
 
-    try:
-        # Build the API URL
-        base_url = AZURE_OPENAI_ENDPOINT.rstrip('/')
-        if base_url.endswith('/v1'):
-            api_url = f"{base_url}/chat/completions"
-        else:
-            api_url = f"{base_url}/chat/completions?api-version={AZURE_OPENAI_API_VERSION}"
-        
-        headers = {
-            "Content-Type": "application/json",
-            "api-key": AZURE_OPENAI_API_KEY,
-        }
-        
-        payload = {
-            "model": AZURE_OPENAI_DEPLOYMENT,
-            "max_completion_tokens": 8000,
-            "temperature": 0.8,  # Slightly higher for more creative scenarios
-            "messages": [
-                {
-                    "role": "system",
-                    "content": """You are a senior ML engineer and interviewer at a top tech company. 
+    messages = [
+        {
+            "role": "system",
+            "content": """You are a senior ML engineer and interviewer at a top tech company. 
 You create challenging scenario-based interview questions that test deep understanding of ML concepts.
 Your questions should expose candidates who only have surface-level knowledge.
 Focus on real-world debugging, optimization decisions, and common pitfalls.
 Always respond with valid JSON only, no markdown formatting."""
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
+        },
+        {
+            "role": "user",
+            "content": prompt
         }
-        
-        print(f"Generating scenario questions via API: {api_url}")
-        
-        # Make the API call
-        with httpx.Client(timeout=120.0) as client:
-            response = client.post(api_url, headers=headers, json=payload)
-            response.raise_for_status()
-        
-        result = response.json()
-        
-        # Extract text from response
-        response_text = ""
-        if "choices" in result and len(result["choices"]) > 0:
-            response_text = result["choices"][0].get("message", {}).get("content", "")
-        
+    ]
+
+    try:
+        response_text = _call_openai_api(messages, max_tokens=8000, temperature=0.8)
         if not response_text:
-            print(f"Empty response from API: {result}")
             return []
-        
-        # Clean up response - remove any markdown code blocks
-        response_text = response_text.strip()
-        if response_text.startswith("```"):
-            lines = response_text.split("\n")
-            json_lines = []
-            in_json = False
-            for line in lines:
-                if line.startswith("```") and not in_json:
-                    in_json = True
-                    continue
-                elif line.startswith("```") and in_json:
-                    break
-                elif in_json:
-                    json_lines.append(line)
-            response_text = "\n".join(json_lines)
-        
-        # Parse JSON
+
+        response_text = _strip_markdown_fences(response_text.strip())
         data = json.loads(response_text)
         questions = data.get("questions", [])
-        
-        # Validate questions
+
         validated_questions = []
         required_keys = ["topic", "category", "scenario", "question", "options", "correct_answer", "explanation"]
         for q in questions:
             if all(key in q for key in required_keys):
                 if len(q["options"]) == 4 and 0 <= q["correct_answer"] <= 3:
                     validated_questions.append(q)
-        
+
         print(f"Generated {len(validated_questions)} valid scenario questions out of {len(questions)} total")
         return validated_questions
-        
+
     except json.JSONDecodeError as e:
         print(f"Error parsing LLM response: {e}")
-        print(f"Response text: {response_text[:500] if 'response_text' in dir() else 'N/A'}")
+        print(f"Response text: {response_text[:500] if 'response_text' in locals() else 'N/A'}")
         return []
-    except httpx.HTTPStatusError as e:
-        print(f"HTTP error: {e.response.status_code} - {e.response.text}")
-        raise ValueError(f"API error: {e.response.status_code} - {e.response.text[:200]}")
     except Exception as e:
         print(f"Error generating scenario questions: {e}")
         raise
